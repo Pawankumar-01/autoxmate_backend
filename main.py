@@ -1,0 +1,494 @@
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
+from sqlmodel import SQLModel, Session, select
+from uuid import uuid4
+from collections import defaultdict
+import os
+from enum import Enum
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from sqlmodel import Session
+import csv
+from io import StringIO
+from models import Contact,Message
+from models import Contact,MessageRequest,Message,WhatsAppConfig,MessageStatus
+from database import get_session, init_db
+from datetime import datetime
+import httpx
+import os,requests
+from dotenv import load_dotenv
+import traceback
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+load_dotenv()
+
+app = FastAPI()
+
+# CORS config
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Dummy database for users
+fake_users_db = {
+    "admin": {
+        "username": "admin",
+        "hashed_password": "admin",
+    }
+}
+
+# JWT setup
+SECRET_KEY = "supersecretkey"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class User(BaseModel):
+    username: str
+
+class Campaign(BaseModel):
+    id: int
+    name: str
+    contacts: List[str]
+    message: str
+
+campaigns_db: List[Campaign] = []
+class SendMessageRequest(BaseModel):
+    contactId: str
+    content: str
+    type : str ="text"
+
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
+VERIFY_TOKEN = "saiganga"
+
+@app.get("/webhook")
+def verify_webhook(request: Request):
+    """
+    Facebook Webhook verification
+    """
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        return JSONResponse(content=int(challenge))
+    else:
+        return JSONResponse(content={"error": "Invalid verification"}, status_code=403)
+    
+
+@app.post("/webhook")
+async def receive_message(request: Request, session: Session = Depends(get_session)):
+    data = await request.json()
+    print("Received webhook message:", data)
+
+    # Extract the necessary fields from webhook
+    try:
+        entry = data["entry"][0]
+        changes = entry["changes"][0]
+        value = changes["value"]
+        messages = value.get("messages", [])
+
+        for msg in messages:
+            phone_number = msg["from"]
+            text_body = msg["text"]["body"]
+            timestamp = datetime.utcfromtimestamp(int(msg["timestamp"]))
+
+            # Match or create contact
+            contact = session.exec(select(Contact).where(Contact.phone == phone_number)).first()
+            if not contact:
+                contact = Contact(name=phone_number, phone=phone_number)
+                session.add(contact)
+                session.commit()
+                session.refresh(contact)
+
+            # Save the message
+            message = Message(
+                contactId=contact.id,
+                content=text_body,
+                timestamp=timestamp,
+                direction="inbound",
+                status=MessageStatus.RECEIVED  # You must define this in Enum
+            )
+            session.add(message)
+            session.commit()
+
+    except Exception as e:
+        print("Error processing webhook:", e)
+
+    return {"status": "received"}
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None or username not in fake_users_db:
+            raise HTTPException(status_code=401, detail="Invalid auth")
+        return User(username=username)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.post("/auth/login", response_model=Token)
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = fake_users_db.get(form_data.username)
+    if not user or user['hashed_password'] != form_data.password:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    token = create_access_token(data={"sub": form_data.username})
+    return {"access_token": token, "token_type": "bearer"}
+
+@app.get("/auth/me", response_model=User)
+def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+
+class PasswordChangeRequest(BaseModel):
+    currentPassword: str
+    newPassword: str
+
+@app.post("/auth/change-password")
+def change_password(
+    payload: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user)
+):
+    user_record = fake_users_db.get(current_user.username)
+    
+    if not user_record or user_record["hashed_password"] != payload.currentPassword:
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+    
+    # Update password (normally you'd hash it)
+    user_record["hashed_password"] = payload.newPassword
+    return {"detail": "Password updated successfully"}
+
+# ------------------ Contacts ------------------
+
+@app.get("/contacts/", response_model=List[Contact])
+def get_contacts(session: Session = Depends(get_session)):
+    return session.exec(select(Contact)).all()
+
+@app.post("/contacts/", response_model=Contact)
+def add_contact(contact: Contact, session: Session = Depends(get_session)):
+    session.add(contact)
+    session.commit()
+    session.refresh(contact)
+    return contact
+
+@app.get("/contacts/{id}", response_model=Contact)
+def get_contact_by_id(id: str, session: Session = Depends(get_session)):
+    contact = session.get(Contact, id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return contact
+
+@app.put("/contacts/{id}", response_model=Contact)
+def update_contact(id: str, updated: Contact, session: Session = Depends(get_session)):
+    db_contact = session.get(Contact, id)
+    if not db_contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    for key, value in updated.dict(exclude_unset=True).items():
+        setattr(db_contact, key, value)
+
+    db_contact.updatedAt = datetime.utcnow()
+    session.add(db_contact)
+    session.commit()
+    session.refresh(db_contact)
+    return db_contact
+
+@app.delete("/contacts/{id}")
+def delete_contact(id: str, session: Session = Depends(get_session)):
+    contact = session.get(Contact, id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    session.delete(contact)
+    session.commit()
+    return {"detail": "Contact deleted"}
+
+
+# routes/contact_routes.py or similar
+  # Make sure this matches your model location
+ # Your DB session dependency
+
+@app.post("/contacts/import")
+async def import_contacts_from_csv(
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session)
+):
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only CSV files are allowed.")
+
+    content = await file.read()
+    decoded = content.decode("utf-8")
+    reader = csv.DictReader(StringIO(decoded))
+
+    imported = 0
+    for row in reader:
+        try:
+            contact = Contact(
+                name=row.get("name", ""),
+                phone=row.get("phone", ""),
+                email=row.get("email", None)
+            )
+            session.add(contact)
+            imported += 1
+        except Exception as e:
+            continue  # or log error
+
+    session.commit()
+    return {"message": f"{imported} contacts imported successfully"}
+
+
+# ------------------ Messages -----------------
+
+WHATSAPP_PHONE_NUMBER_ID = '655560807644446'
+WHATSAPP_TOKEN = 'EAGlDSKINKB4BO8CT4iRbLSr3ZCNXzNIeatcimYBJyqr46NZCnieECWaZAK4wZBUJM4HSTIPWEIJILWkvgTLOOSWZAhIo8Lh8K4ZBWIyGAJh6nODrwuly1FhZB2w7BJsq6AagapueAcyHcPoxESGrTUt5ja5buPUL9Gcbe8h0nzMZB75MQeB30WwYKnRYwiBNiZAMXuAvsNkmTayuX1aqt3VlDhDZASZBHlnfPAj6EXrasIOXcpkGAZDZD'
+WHATSAPP_API_URL = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+
+
+
+@app.get("/messages", response_model=List[Message])
+def get_all_messages(session: Session = Depends(get_session)):
+    return session.exec(select(Message)).all()
+
+@app.get("/messages/{contact_id}", response_model=List[Message])
+def get_messages(contact_id: str, session: Session = Depends(get_session)):
+    return session.exec(select(Message).where(Message.contactId == contact_id)).all()
+
+@app.post("/messages/send", response_model=Message)
+def send_message(data: SendMessageRequest, session: Session = Depends(get_session)):
+    # Fetch contact to get phone number
+    contact = session.get(Contact, data.contactId)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    # WhatsApp API request
+    url = WHATSAPP_API_URL
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": contact.phone,
+        "type": "text",  # change to "text" if sending real messages in production
+        "text" : {
+            "body" : data.content
+        }
+        }
+
+    # Send the message
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code != 200:
+        print("WhatsApp API error:", response.status_code, response.text)
+        status = MessageStatus.FAILED
+    else:
+        print("Message sent successfully:", response.json())
+        status = MessageStatus.SENT
+
+    # Store message in DB
+    message = Message(
+        contactId=data.contactId,
+        content=data.content,
+        timestamp=datetime.utcnow(),
+        direction="outbound",
+        status=status,
+        type=data.type
+    )
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+
+    return message
+
+# ------------------ Conversations ------------------
+
+
+@app.get("/conversations")
+def get_conversations(session: Session = Depends(get_session)):
+    messages = session.exec(
+        select(Message).order_by(Message.timestamp.desc())
+    ).all()
+
+    conv_map = {}
+
+    for msg in messages:
+        contact_id = msg.contactId
+        if not contact_id:
+            continue
+
+        if contact_id not in conv_map:
+            contact = session.get(Contact, contact_id)
+            contact_data = {
+                "id": contact.id,
+                "name": contact.name,
+                "phone": contact.phone,
+            } if contact else {
+                "id": contact_id,
+                "name": f"Contact {contact_id}",
+                "phone": contact_id,
+            }
+
+            conv_map[contact_id] = {
+                "id": f"conv_{contact_id}",
+                "contactId": contact_id,
+                "contact": contact_data,
+                "lastMessage": {
+                    "id": msg.id,
+                    "content": msg.content,
+                    "timestamp": msg.timestamp,
+                    "status": msg.status,
+                    "direction": msg.direction,
+                },
+                "unreadCount": 0,
+                "status": "active",
+                "updatedAt": msg.timestamp or datetime.utcnow(),
+            }
+
+    return list(conv_map.values())
+
+
+
+@app.get("/conversations/{contact_id}")
+def get_conversation(contact_id: str, session: Session = Depends(get_session)):
+    message = session.exec(
+        select(Message).where(Message.contactId == contact_id).order_by(Message.timestamp.desc())
+    ).first()
+
+    if not message:
+        raise HTTPException(status_code=404, detail="No messages found")
+
+    return {
+        "id": f"conv_{contact_id}",
+        "contactId": contact_id,
+        "contact": {
+            "id": contact_id,
+            "name": f"Contact {contact_id}",  # Replace with DB fetch if Contact table is used
+            "phone": contact_id
+        },
+        "lastMessage": message,
+        "unreadCount": 0,
+        "status": "active",
+        "updatedAt": message.timestamp
+    }
+
+@app.post("/conversations/{contact_id}/mark-read")
+def mark_conversation_as_read(contact_id: str, session: Session = Depends(get_session)):
+    messages = session.exec(
+        select(Message).where(Message.contactId == contact_id, Message.status != "read")
+    ).all()
+
+    for message in messages:
+        message.status = "read"
+        session.add(message)
+
+    session.commit()
+    return {"success": True}
+
+# ------------------ Campaigns ------------------
+
+@app.get("/campaigns/", response_model=List[Campaign])
+def get_campaigns():
+    return campaigns_db
+
+@app.post("/campaigns/", response_model=Campaign)
+def create_campaign(campaign: Campaign):
+    campaigns_db.append(campaign)
+    return campaign
+
+#--------------------------------Settings-------------------
+from models import WhatsAppConfig
+
+@app.get("/settings/whatsapp", response_model=WhatsAppConfig)
+def get_whatsapp_config(session: Session = Depends(get_session)):
+    config = session.get(WhatsAppConfig, 1)
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found")
+    return config
+
+
+
+@app.post("/settings/whatsapp", response_model=WhatsAppConfig)
+def update_whatsapp_config(data: WhatsAppConfig, session: Session = Depends(get_session)):
+    config = session.get(WhatsAppConfig, 1)
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found")
+
+    for key, value in data.dict(exclude_unset=True).items():
+        setattr(config, key, value)
+
+    config.isConfigured = bool(
+        config.accessToken and config.phoneNumberId and config.businessAccountId
+    )
+
+    session.add(config)
+    session.commit()
+    session.refresh(config)
+    return config
+
+@app.get("/settings/test")
+def test_whatsapp_connection(session: Session = Depends(get_session)):
+    config = session.get(WhatsAppConfig, 1)
+    if not config or not config.isConfigured:
+        raise HTTPException(status_code=400, detail="WhatsApp not configured")
+
+    import random
+    if random.random() < 0.2:
+        raise HTTPException(status_code=500, detail="Failed to connect to WhatsApp API")
+
+    return {"status": "success", "message": "WhatsApp API connection successful"}
+
+
+#------------------------------------------------------------------------------------------------
+
+
+@app.post("/dev/create-test-message")
+def create_test_message(session: Session = Depends(get_session)):
+    message = Message(
+        contactId="f558faa8-8e36-4fa8-b1fe-d933d211bd1f",
+        content="Hello from test!",
+        type="TEXT",
+        direction="OUTBOUND",
+        status="SENT"
+    )
+    session.add(message)
+    session.commit()
+    return {"message": "Test message created"}
+
+
+
+
+
+@app.middleware("http")
+async def log_exceptions(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:
+        print("🔥 Exception caught:")
+        traceback.print_exc()  # this prints full traceback to console
+        raise e
