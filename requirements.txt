@@ -9,3 +9,7 @@ sqlalchemy
 supabase
 python-dotenv
 python-jose[cryptography]
+psycopg2-binary
+alembic
+email-validator
+passlib[bcrypt]
