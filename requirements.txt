@@ -8,3 +8,4 @@ asyncpg
 sqlalchemy
 supabase
 python-dotenv
+python-jose[cryptography]
