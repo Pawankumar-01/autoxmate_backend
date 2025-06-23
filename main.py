@@ -32,7 +32,7 @@ app = FastAPI()
 # CORS config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173","https://saigangapanacea.in"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -85,7 +85,9 @@ async def on_startup():
     await init_db()
 
 VERIFY_TOKEN = "saiganga"
-
+@app.get("/")
+def root():
+    return {"message": "FastAPI backend is running"}
 
 @app.get("/test-db")
 def test_db(session: Session = Depends(get_session)):
