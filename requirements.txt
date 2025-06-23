@@ -14,3 +14,4 @@ alembic
 email-validator
 passlib[bcrypt]
 requests
+python-multipart==0.0.9
