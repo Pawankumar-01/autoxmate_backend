@@ -1,12 +1,14 @@
 from enum import Enum
 from datetime import datetime
-from typing import Optional,List
+from typing import Optional
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field
 import uuid
 
 def generate_uuid():
     return str(uuid.uuid4())
+
+# ------------------- ENUMS -------------------
 
 class MessageType(str, Enum):
     TEXT = "text"
@@ -24,13 +26,13 @@ class MessageStatus(str, Enum):
     PENDING = "pending"
     RECEIVED = "received"
 
+# ------------------- MODELS -------------------
 
 class Contact(SQLModel, table=True):
     id: str = Field(default_factory=generate_uuid, primary_key=True)
     name: str
     phone: str
     email: Optional[str] = None
-    #tags: Optional[str] = Field(default="")
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
     lastMessageAt: Optional[datetime] = None
@@ -39,9 +41,9 @@ class Message(SQLModel, table=True):
     id: str = Field(default_factory=generate_uuid, primary_key=True)
     contactId: str = Field(foreign_key="contact.id")
     content: str
-    type: MessageType = MessageType.TEXT
-    direction: MessageDirection = MessageDirection.OUTBOUND
-    status: MessageStatus = MessageStatus.SENT
+    type: MessageType = Field(default=MessageType.TEXT)
+    direction: MessageDirection = Field(default=MessageDirection.OUTBOUND)
+    status: MessageStatus = Field(default=MessageStatus.SENT)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     templateName: Optional[str] = None
 

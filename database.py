@@ -1,29 +1,28 @@
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import SQLModel
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine  # For Alembic migrations
+import os
+from dotenv import load_dotenv
 
-from models import WhatsAppConfig
-sqlite_url = "sqlite:///./database.db"
-engine = create_engine(sqlite_url, echo=True)
+load_dotenv()
 
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-def init_db():
-    SQLModel.metadata.create_all(engine)
+# Async engine for FastAPI
+engine = create_async_engine(DATABASE_URL, echo=True)
+AsyncSessionLocal = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
+# Sync engine for Alembic
+sync_engine = create_engine(DATABASE_URL.replace("+asyncpg", ""), echo=True)
 
-def get_session():
-    with Session(engine) as session:
+# Dependency for FastAPI routes
+async def get_session() -> AsyncSession:
+    async with AsyncSessionLocal() as session:
         yield session
 
-
-def init_db():
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        # Ensure one config row exists
-        config = session.get(WhatsAppConfig, 1)
-        if not config:
-            session.add(WhatsAppConfig(
-                accessToken='',
-                phoneNumberId='',
-                businessAccountId='',
-                isConfigured=False
-            ))
-            session.commit()
+# Database initializer
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)

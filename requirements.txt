@@ -4,3 +4,7 @@ sqlmodel
 pydantic
 httpx
 python-dotenv
+asyncpg
+sqlalchemy
+supabase
+python-dotenv
