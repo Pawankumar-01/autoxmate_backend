@@ -8,7 +8,6 @@ from jose import JWTError, jwt
 from sqlmodel import SQLModel, Session, select
 from uuid import uuid4
 from collections import defaultdict
-import os
 from enum import Enum
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlmodel import Session
@@ -25,6 +24,9 @@ import traceback
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
+from dotenv import load_dotenv
+
+
 load_dotenv()
 
 app = FastAPI()
@@ -84,7 +86,7 @@ class MessageStatus(str, Enum):
 async def on_startup():
     await init_db()
 
-VERIFY_TOKEN = "saiganga"
+VERIFY_TOKEN=os.getenv("VERIFY_TOKEN")
 @app.get("/")
 def root():
     return {"message": "FastAPI backend is running"}
@@ -284,9 +286,9 @@ async def import_contacts_from_csv(
 
 
 # ------------------ Messages -----------------
-
-WHATSAPP_PHONE_NUMBER_ID = '641786902360493'
-WHATSAPP_TOKEN = 'EAGlDSKINKB4BOZBbKukJf5L9QZATZAogDWfmd527ZCtZCWEdjwBEUD33ZBAQQr1U83jRIfqmnXRT0OZALH2W3K76E28Qaa3PwNRcEvTNR2H4gn6pbzIhyEXlvd75Elfk1HKIyG1ZBlU2ZCLkjZC1XSzz7ImalCc4hes4VocJGP7apPutbCxbtE9Et3ZBLHv8hZBhlSvjy1CSYbZBAG74uK1NBMdxsyI4ZBnx1hxcANhwT5n7Eba0CDFgZDZD'
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+WHATSAPP_BUSINESS_ACCOUNT_ID = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID")
 WHATSAPP_API_URL = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
 
 
