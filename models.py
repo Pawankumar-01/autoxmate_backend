@@ -1,6 +1,6 @@
 from enum import Enum
 from datetime import datetime
-from typing import Optional
+from typing import Optional,List,Dict,Any
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field
 import uuid
@@ -61,3 +61,44 @@ class WhatsAppConfig(SQLModel, table=True):
     webhookUrl: Optional[str] = None
     webhookToken: Optional[str] = None
     isConfigured: bool = False
+
+
+
+
+
+class TemplateType(str, Enum):
+    TEXT = "text"
+    IMAGE = "image"
+    VIDEO = "video"
+
+class ButtonType(str, Enum):
+    URL = "url"
+    CALL = "call"
+    QUICK_REPLY = "quick_reply"
+
+class Template(SQLModel, table=True):
+    id: str = Field(default_factory=generate_uuid, primary_key=True)
+    name: str
+    category: str = "MARKETING"  # or TRANSACTIONAL
+    language: str = "en_US"
+    header: Optional[str] = None
+    body: str
+    footer: Optional[str] = None
+    type: TemplateType = TemplateType.TEXT
+    media_url: Optional[str] = None
+    buttons_json: Optional[str] = None  # stored as JSON string
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+
+
+
+class TemplateCreate(BaseModel):
+    name: str
+    category: str
+    language: str
+    header: Optional[str] = None
+    body: str
+    footer: Optional[str] = None
+    type: Optional[str] = "text"
+    media_url: Optional[str] = None
+    buttons_json: Optional[str] = None
+    components: Optional[List[Dict[str, Any]]] = None
