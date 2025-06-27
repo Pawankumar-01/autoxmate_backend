@@ -531,7 +531,8 @@ async def create_template_in_meta(template: TemplateCreate, session: AsyncSessio
         "name": template.name.lower().replace(" ", "_"),
         "category": template.category.upper(),
         "language": template.language,
-        "components": []
+        "components": [],
+        "body": template.body
     }
 
     if template.header:
