@@ -34,7 +34,7 @@ app = FastAPI()
 # CORS config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173","saigangapanacea.in"],
+    allow_origins=["http://localhost:5173","https://saigangapanacea.in"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
