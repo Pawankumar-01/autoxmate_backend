@@ -14,7 +14,7 @@ from sqlmodel import Session
 import csv
 from io import StringIO
 from models import Contact,Message
-from models import Contact,MessageRequest,Message,WhatsAppConfig,MessageStatus
+from models import Contact,MessageRequest,Message,WhatsAppConfig,MessageStatus,Template,TemplateType,TemplateCreate
 from database import get_session, init_db
 from datetime import datetime
 import httpx
@@ -34,7 +34,7 @@ app = FastAPI()
 # CORS config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173","https://saigangapanacea.in"],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,10 +69,15 @@ class Campaign(BaseModel):
     message: str
 
 campaigns_db: List[Campaign] = []
+from typing import Optional, List, Dict, Any
+
 class SendMessageRequest(BaseModel):
     contactId: str
-    content: str
-    type : str ="text"
+    content: Optional[str] = None  # only for type=text
+    type: str = "text"             # text or template
+    templateName: Optional[str] = None
+    language: Optional[str] = "en_US"
+    components: Optional[List[Dict[str, Any]]] = None
 
 class MessageStatus(str, Enum):
     SENT = "sent"
@@ -311,19 +316,35 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": contact.phone,
-        "type": "text",
-        "text": {"body": data.content}
-    }
+    if data.type == "text":
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": contact.phone,
+            "type": "text",
+            "text": {"body": data.content}
+        }
+    elif data.type == "template":
+        if not data.templateName or not data.components:
+            raise HTTPException(status_code=400, detail="Missing template name or components")
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": contact.phone,
+            "type": "template",
+            "template": {
+                "name": data.templateName,
+                "language": { "code": data.language },
+                "components": data.components
+            }
+        }
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported message type")
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
         "Content-Type": "application/json"
     }
 
-    # Use async HTTP call
     async with httpx.AsyncClient() as client:
         response = await client.post(WHATSAPP_API_URL, headers=headers, json=payload)
 
@@ -336,17 +357,19 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
 
     message = Message(
         contactId=data.contactId,
-        content=data.content,
+        content=data.content or f"TEMPLATE: {data.templateName}",
         timestamp=datetime.utcnow(),
         direction="outbound",
         status=status,
-        type=data.type
+        type=data.type,
+        templateName=data.templateName
     )
     session.add(message)
     await session.commit()
     await session.refresh(message)
 
     return message
+
 
 
 # ------------------ Conversations ------------------
@@ -492,3 +515,81 @@ def test_whatsapp_connection(session: AsyncSession = Depends(get_session)):
 
 #------------------------------------------------------------------------------------------------
 
+@app.post("/templates/create-meta")
+async def create_template_in_meta(template: TemplateCreate, session: AsyncSession = Depends(get_session)):
+    config = await session.get(WhatsAppConfig, 1)
+    if not config or not config.isConfigured:
+        raise HTTPException(status_code=400, detail="WhatsApp not configured")
+
+    url = f"https://graph.facebook.com/v19.0/{WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "name": template.name.lower().replace(" ", "_"),
+        "category": template.category.upper(),
+        "language": template.language,
+        "components": []
+    }
+
+    if template.header:
+        payload["components"].append({
+            "type": "HEADER",
+            "format": template.type.upper(),
+            "example": {"header_text": [template.header]} if template.type == TemplateType.TEXT else {"header_handle": [template.media_url]}
+        })
+
+    payload["components"].append({
+        "type": "BODY",
+        "text": template.body
+    })
+
+    if template.footer:
+        payload["components"].append({
+            "type": "FOOTER",
+            "text": template.footer
+        })
+
+    if template.buttons_json:
+        import json
+        buttons = json.loads(template.buttons_json)
+        payload["components"].append({
+            "type": "BUTTONS",
+            "buttons": buttons  # should match Meta structure
+        })
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, json=payload)
+
+    if response.status_code != 200:
+        return {"status": "failed", "error": response.text}
+
+    return {"status": "success", "response": response.json()}
+
+@app.get("/templates", response_model=List[Template])
+async def list_templates(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Template))
+    return result.scalars().all()
+
+@app.get("/templates/meta")
+async def fetch_templates_from_meta(session: AsyncSession = Depends(get_session)):
+    config = await session.get(WhatsAppConfig, 1)
+    if not config or not config.isConfigured:
+        raise HTTPException(status_code=400, detail="WhatsApp not configured")
+
+    url = f"https://graph.facebook.com/v19.0/{WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates"
+
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=headers)
+
+    if response.status_code != 200:
+        return {"status": "error", "error": response.text}
+
+    return response.json()
