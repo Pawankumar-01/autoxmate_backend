@@ -511,7 +511,7 @@ def test_whatsapp_connection(session: AsyncSession = Depends(get_session)):
         raise HTTPException(status_code=500, detail="Failed to connect to WhatsApp API")
 
     return {"status": "success", "message": "WhatsApp API connection successful"}
--------------------------------------------------------------------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------------------------------------------------------------
 @app.post("/templates/create-meta")
 async def create_template_in_meta(template: TemplateCreate, session: AsyncSession = Depends(get_session)):
     config = await session.get(WhatsAppConfig, 1)
