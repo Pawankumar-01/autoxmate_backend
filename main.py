@@ -511,10 +511,7 @@ def test_whatsapp_connection(session: AsyncSession = Depends(get_session)):
         raise HTTPException(status_code=500, detail="Failed to connect to WhatsApp API")
 
     return {"status": "success", "message": "WhatsApp API connection successful"}
-
-
-#------------------------------------------------------------------------------------------------
-
+-------------------------------------------------------------------------------------------------------------------------------------------
 @app.post("/templates/create-meta")
 async def create_template_in_meta(template: TemplateCreate, session: AsyncSession = Depends(get_session)):
     config = await session.get(WhatsAppConfig, 1)
@@ -527,38 +524,48 @@ async def create_template_in_meta(template: TemplateCreate, session: AsyncSessio
         "Content-Type": "application/json"
     }
 
+    # Start building payload
     payload = {
         "name": template.name.lower().replace(" ", "_"),
         "category": template.category.upper(),
         "language": template.language,
-        "components": [],
-        "body": template.body
+        "components": []
     }
 
+    # ✅ HEADER (optional)
     if template.header:
         payload["components"].append({
             "type": "HEADER",
             "format": template.type.upper(),
-            "example": {"header_text": [template.header]} if template.type == TemplateType.TEXT else {"header_handle": [template.media_url]}
+            "example": {
+                "header_text": [template.header]
+            } if template.type == TemplateType.TEXT else {
+                "header_handle": [template.media_url]
+            }
         })
 
+    # ✅ BODY (must be included, no 'text' key here)
     payload["components"].append({
         "type": "BODY",
-        "text": template.body
+        "example": {
+            "body_text": [template.body]  # optional example for body
+        }
     })
 
+    # ✅ FOOTER (optional)
     if template.footer:
         payload["components"].append({
             "type": "FOOTER",
             "text": template.footer
         })
 
+    # ✅ BUTTONS (optional)
     if template.buttons_json:
         import json
         buttons = json.loads(template.buttons_json)
         payload["components"].append({
             "type": "BUTTONS",
-            "buttons": buttons  # should match Meta structure
+            "buttons": buttons
         })
 
     async with httpx.AsyncClient() as client:
@@ -568,6 +575,7 @@ async def create_template_in_meta(template: TemplateCreate, session: AsyncSessio
         return {"status": "failed", "error": response.text}
 
     return {"status": "success", "response": response.json()}
+
 
 @app.get("/templates", response_model=List[Template])
 async def list_templates(session: AsyncSession = Depends(get_session)):
