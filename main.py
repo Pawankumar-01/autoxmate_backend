@@ -339,23 +339,22 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
 
             elif comp.get("type") == "header":
                 first_param = comp.get("parameters", [])[0]
-                if first_param.get("type") == "image" and "image" in first_param:
+            
+                if first_param.get("type") == "image" and first_param.get("image", {}).get("link"):
                     formatted_components.append({
                         "type": "header",
-                        "parameters": [
-                            {
-                                "type": "image",
-                                "image": {
-                                    "link": first_param["image"]["link"]
-                                }
+                        "parameters": [{
+                            "type": "image",
+                            "image": {
+                                "link": first_param["image"]["link"]
                             }
-                        ]
+                        }]
                     })
                 else:
-                    formatted_components.append({
-                        "type": "header",
-                        "parameters": comp["parameters"]
-                    })
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Header format mismatch: Expected image with valid link"
+                    )
 
             elif comp.get("type") == "button":
                 formatted_components.append({
