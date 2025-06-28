@@ -328,23 +328,40 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
         if not data.templateName or not data.components:
             raise HTTPException(status_code=400, detail="Missing template name or components")
 
-        # ✅ Validate and reformat components
         formatted_components = []
+
         for comp in data.components:
-            if comp.get("type") == "body" and isinstance(comp.get("parameters"), list):
+            if comp.get("type") == "body":
                 formatted_components.append({
                     "type": "body",
-                    "parameters": comp["parameters"]
+                    "parameters": comp.get("parameters", [])
                 })
-            elif comp.get("type") == "header" and isinstance(comp.get("parameters"), list):
-                formatted_components.append({
-                    "type": "header",
-                    "parameters": comp["parameters"]
-                })
-            elif comp.get("type") == "button" and isinstance(comp.get("sub_type"), str):
+            elif comp.get("type") == "header":
+                # Detect image headers
+                if comp.get("parameters") and comp["parameters"][0].get("type") == "image":
+                    image_url = comp["parameters"][0]["image"].get("link")
+                    if not image_url:
+                        raise HTTPException(status_code=400, detail="Missing image link for image header.")
+                    formatted_components.append({
+                        "type": "header",
+                        "parameters": [
+                            {
+                                "type": "image",
+                                "image": {
+                                    "link": image_url
+                                }
+                            }
+                        ]
+                    })
+                else:
+                    formatted_components.append({
+                        "type": "header",
+                        "parameters": comp.get("parameters", [])
+                    })
+            elif comp.get("type") == "button":
                 formatted_components.append({
                     "type": "button",
-                    "sub_type": comp["sub_type"],
+                    "sub_type": comp.get("sub_type", "quick_reply"),
                     "index": comp.get("index", "0"),
                     "parameters": comp.get("parameters", [])
                 })
@@ -392,6 +409,7 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
     await session.refresh(message)
 
     return message
+
 
 
 
