@@ -356,7 +356,7 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
                             {
                                 "type": "image",
                                 "image": {
-                                    "link": "https://scontent.whatsapp.net/v/t61.29466-34/510445618_1122341353055743_8015542719408545666_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=IU3Crn2q66AQ7kNvwHzH7gQ&_nc_oc=Adks1hgLJDZnKmJoFidmMvtSPUf2XwJHs4Z4kAVUzrD0oB0P2-kT8MqSngC-7oReglo&_nc_zt=3&_nc_ht=scontent.whatsapp.net&_nc_gid=lvHyZElLZvJGGhbzaDfa7g&oh=01_Q5Aa1wGEOOuRgZ6xVjayiky1vjWXduHWSuFaCz8gGnywkcHhbg&oe=68873FF0"
+                                    "link": "https://saigangapanakeia.in/Images/logo.png"
                                 }
                             }
                         ]
