@@ -337,27 +337,26 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
                     "parameters": comp.get("parameters", [])
                 })
             elif comp.get("type") == "header":
-                # Detect image headers
-                if comp.get("parameters") and comp["parameters"][0].get("type") == "image":
-                    image_url = comp["parameters"][0]["image"].get("link")
-                    if not image_url:
-                        raise HTTPException(status_code=400, detail="Missing image link for image header.")
-                    formatted_components.append({
-                        "type": "header",
-                        "parameters": [
-                            {
-                                "type": "image",
-                                "image": {
-                                    "link": image_url
-                                }
+    # Check if it's an image type
+            first_param = comp.get("parameters", [])[0]
+            if first_param.get("type") == "image" and "image" in first_param:
+                formatted_components.append({
+                    "type": "header",
+                    "parameters": [
+                        {
+                            "type": "image",
+                            "image": {
+                                "link": first_param["image"]["link"]
                             }
-                        ]
-                    })
-                else:
-                    formatted_components.append({
-                        "type": "header",
-                        "parameters": comp.get("parameters", [])
-                    })
+                        }
+                    ]
+                })
+            else:
+                # Fallback (e.g. text header if applicable)
+                formatted_components.append({
+                    "type": "header",
+                    "parameters": comp["parameters"]
+        })
             elif comp.get("type") == "button":
                 formatted_components.append({
                     "type": "button",
