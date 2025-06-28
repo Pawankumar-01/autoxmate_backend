@@ -331,38 +331,52 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
         formatted_components = []
 
         for comp in data.components:
-            if comp.get("type") == "body":
+            comp_type = comp.get("type")
+
+            if comp_type == "body":
                 formatted_components.append({
                     "type": "body",
                     "parameters": comp.get("parameters", [])
                 })
 
-            elif comp.get("type") == "header":
-                first_param = comp.get("parameters", [])[0]
-            
-                if first_param.get("type") == "image" and first_param.get("image", {}).get("link"):
+            elif comp_type == "header":
+                parameters = comp.get("parameters", [])
+                if not parameters:
+                    raise HTTPException(status_code=400, detail="Header parameters missing")
+
+                first_param = parameters[0]
+                if first_param.get("type") == "image":
+                    image_link = first_param.get("image", {}).get("link")
+                    if not image_link:
+                        raise HTTPException(status_code=400, detail="Image link missing in header parameter")
+
                     formatted_components.append({
                         "type": "header",
-                        "parameters": [{
-                            "type": "image",
-                            "image": {
-                                "link": first_param["image"]["link"]
+                        "parameters": [
+                            {
+                                "type": "image",
+                                "image": {
+                                    "link": "https://scontent.whatsapp.net/v/t61.29466-34/510445618_1122341353055743_8015542719408545666_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=IU3Crn2q66AQ7kNvwHzH7gQ&_nc_oc=Adks1hgLJDZnKmJoFidmMvtSPUf2XwJHs4Z4kAVUzrD0oB0P2-kT8MqSngC-7oReglo&_nc_zt=3&_nc_ht=scontent.whatsapp.net&_nc_gid=lvHyZElLZvJGGhbzaDfa7g&oh=01_Q5Aa1wGEOOuRgZ6xVjayiky1vjWXduHWSuFaCz8gGnywkcHhbg&oe=68873FF0"
+                                }
                             }
-                        }]
+                        ]
                     })
                 else:
                     raise HTTPException(
                         status_code=400,
-                        detail="Header format mismatch: Expected image with valid link"
+                        detail="Header format mismatch: Expected type 'image' with valid link"
                     )
 
-            elif comp.get("type") == "button":
+            elif comp_type == "button":
                 formatted_components.append({
                     "type": "button",
                     "sub_type": comp.get("sub_type", "quick_reply"),
-                    "index": comp.get("index", "0"),
+                    "index": str(comp.get("index", "0")),
                     "parameters": comp.get("parameters", [])
                 })
+
+            else:
+                raise HTTPException(status_code=400, detail=f"Unsupported component type: {comp_type}")
 
         payload = {
             "messaging_product": "whatsapp",
