@@ -336,27 +336,27 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
                     "type": "body",
                     "parameters": comp.get("parameters", [])
                 })
+
             elif comp.get("type") == "header":
-    # Check if it's an image type
-            first_param = comp.get("parameters", [])[0]
-            if first_param.get("type") == "image" and "image" in first_param:
-                formatted_components.append({
-                    "type": "header",
-                    "parameters": [
-                        {
-                            "type": "image",
-                            "image": {
-                                "link": first_param["image"]["link"]
+                first_param = comp.get("parameters", [])[0]
+                if first_param.get("type") == "image" and "image" in first_param:
+                    formatted_components.append({
+                        "type": "header",
+                        "parameters": [
+                            {
+                                "type": "image",
+                                "image": {
+                                    "link": first_param["image"]["link"]
+                                }
                             }
-                        }
-                    ]
-                })
-            else:
-                # Fallback (e.g. text header if applicable)
-                formatted_components.append({
-                    "type": "header",
-                    "parameters": comp["parameters"]
-        })
+                        ]
+                    })
+                else:
+                    formatted_components.append({
+                        "type": "header",
+                        "parameters": comp["parameters"]
+                    })
+
             elif comp.get("type") == "button":
                 formatted_components.append({
                     "type": "button",
@@ -371,7 +371,7 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
             "type": "template",
             "template": {
                 "name": data.templateName,
-                "language": { "code": data.language or "en_US" },
+                "language": {"code": data.language or "en_US"},
                 "components": formatted_components
             }
         }
@@ -408,6 +408,7 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
     await session.refresh(message)
 
     return message
+
 
 
 
@@ -616,12 +617,6 @@ async def create_template_in_meta(template: TemplateCreate, session: AsyncSessio
         return {"status": "failed", "error": response.text}
 
     return {"status": "success", "response": response.json()}
-
-
-@app.get("/templates", response_model=List[Template])
-async def list_templates(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Template))
-    return result.scalars().all()
 
 @app.get("/templates/meta")
 async def fetch_templates_from_meta(session: AsyncSession = Depends(get_session)):
