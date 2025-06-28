@@ -323,20 +323,43 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
             "type": "text",
             "text": {"body": data.content}
         }
+
     elif data.type == "template":
         if not data.templateName or not data.components:
             raise HTTPException(status_code=400, detail="Missing template name or components")
-        
+
+        # ✅ Validate and reformat components
+        formatted_components = []
+        for comp in data.components:
+            if comp.get("type") == "body" and isinstance(comp.get("parameters"), list):
+                formatted_components.append({
+                    "type": "body",
+                    "parameters": comp["parameters"]
+                })
+            elif comp.get("type") == "header" and isinstance(comp.get("parameters"), list):
+                formatted_components.append({
+                    "type": "header",
+                    "parameters": comp["parameters"]
+                })
+            elif comp.get("type") == "button" and isinstance(comp.get("sub_type"), str):
+                formatted_components.append({
+                    "type": "button",
+                    "sub_type": comp["sub_type"],
+                    "index": comp.get("index", "0"),
+                    "parameters": comp.get("parameters", [])
+                })
+
         payload = {
             "messaging_product": "whatsapp",
             "to": contact.phone,
             "type": "template",
             "template": {
                 "name": data.templateName,
-                "language": { "code": data.language },
-                "components": data.components
+                "language": { "code": data.language or "en_US" },
+                "components": formatted_components
             }
         }
+
     else:
         raise HTTPException(status_code=400, detail="Unsupported message type")
 
@@ -369,6 +392,7 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
     await session.refresh(message)
 
     return message
+
 
 
 
