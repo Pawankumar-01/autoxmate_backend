@@ -340,32 +340,31 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
                 })
 
             elif comp_type == "header":
-                parameters = comp.get("parameters", [])
-                if not parameters:
-                    raise HTTPException(status_code=400, detail="Header parameters missing")
-
-                first_param = parameters[0]
-                if first_param.get("type") == "image":
-                    image_link = first_param.get("image", {}).get("link")
-                    if not image_link:
-                        raise HTTPException(status_code=400, detail="Image link missing in header parameter")
-
-                    formatted_components.append({
-                        "type": "header",
-                        "parameters": [
-                            {
+                    parameters = comp.get("parameters", [])
+                    if not parameters:
+                        raise HTTPException(status_code=400, detail="Header parameters missing")
+                
+                    first_param = parameters[0]
+                
+                    # Meta expects an image template, and you're passing an image
+                    if first_param.get("type") == "image":
+                        image_obj = first_param.get("image", {})
+                        image_link = image_obj.get("link")
+                        if not image_link:
+                            raise HTTPException(status_code=400, detail="Image link missing in header parameter")
+                
+                        formatted_components.append({
+                            "type": "header",
+                            "parameters": [{
                                 "type": "image",
                                 "image": {
-                                    "link": "https://saigangapanakeia.in/Images/logo.png"
+                                    "link": image_link
                                 }
-                            }
-                        ]
-                    })
-                else:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Header format mismatch: Expected type 'image' with valid link"
-                    )
+                            }]
+                        })
+                    else:
+                        raise HTTPException(status_code=400, detail="Header format mismatch: Expected image with valid link")
+
 
             elif comp_type == "button":
                 formatted_components.append({
