@@ -663,53 +663,68 @@ async def run_campaign(data: dict = Body(...), session: AsyncSession = Depends(g
     tpl_name = data.get("templateName")
     lang = data.get("language", "en_US")
 
-    # Fetch template components from Meta
     config = await session.get(WhatsAppConfig, 1)
     if not config or not config.isConfigured:
         raise HTTPException(400, "WhatsApp not configured")
 
-    # Retrieve template payload via Meta API
     url = f"https://graph.facebook.com/v19.0/{WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates"
     params = {"name": tpl_name, "language": lang}
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, params=params)
-    if resp.status_code != 200:
-        raise HTTPException(400, f"Template fetch failed: {resp.text}")
-    tpl = resp.json().get("data", [{}])[0]
-    comps = tpl.get("components", [])
-
+    
     sent = 0
-    for cid in names:
-        contact = await session.get(Contact, cid)
-        if not contact:
-            continue
 
-        # Clone components and fill parameters
-        filled = []
-        for comp in comps:
-            cp = comp.copy()
-            if cp["type"] == "BODY":
-                text = cp["text"]
-                for k, v in variables.items():
-                    text = text.replace(f"{{{{{k}}}}}", v)
-                filled.append({"type": "body", "parameters": [{"type": "text", "text": text}]})
-            else:
-                filled.append(comp)
+    async with httpx.AsyncClient() as client:
+        # ✅ Template fetch (inside context)
+        resp = await client.get(url, headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, params=params)
+        if resp.status_code != 200:
+            raise HTTPException(400, f"Template fetch failed: {resp.text}")
+        tpl = resp.json().get("data", [{}])[0]
+        comps = tpl.get("components", [])
 
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": contact.phone,
-            "type": "template",
-            "template": {"name": tpl_name, "language": {"code": lang}, "components": filled}
-        }
-        resp2 = await client.post(WHATSAPP_API_URL, headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, json=payload)
-        status = MessageStatus.SENT if resp2.status_code == 200 else MessageStatus.FAILED
+        for cid in names:
+            contact = await session.get(Contact, cid)
+            if not contact:
+                continue
 
-        msg = Message(
-            contactId=cid, content="", direction="outbound",
-            status=status, timestamp=datetime.utcnow(), type="template", templateName=tpl_name
-        )
-        session.add(msg)
-        sent += 1
+            filled = []
+            for comp in comps:
+                cp = comp.copy()
+                if cp["type"] == "BODY":
+                    text = cp.get("text", "")
+                    for k, v in variables.items():
+                        text = text.replace(f"{{{{{k}}}}}", v)
+                    filled.append({"type": "body", "parameters": [{"type": "text", "text": text}]})
+                else:
+                    filled.append(cp)
+
+            payload = {
+                "messaging_product": "whatsapp",
+                "to": contact.phone,
+                "type": "template",
+                "template": {
+                    "name": tpl_name,
+                    "language": {"code": lang},
+                    "components": filled
+                }
+            }
+
+            resp2 = await client.post(
+                WHATSAPP_API_URL,
+                headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
+                json=payload
+            )
+
+            status = MessageStatus.SENT if resp2.status_code == 200 else MessageStatus.FAILED
+            msg = Message(
+                contactId=cid,
+                content="",
+                direction="outbound",
+                status=status,
+                timestamp=datetime.utcnow(),
+                type="template",
+                templateName=tpl_name
+            )
+            session.add(msg)
+            sent += 1
+
     await session.commit()
     return {"sent": sent}
