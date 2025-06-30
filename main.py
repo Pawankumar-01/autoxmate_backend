@@ -650,3 +650,36 @@ async def fetch_templates_from_meta(session: AsyncSession = Depends(get_session)
         return {"status": "error", "error": response.text}
 
     return response.json()
+#--------------------------------------------------------------------------------------------
+
+
+# --- BACKEND (FastAPI) ---
+
+@app.post("/media/upload")
+async def upload_image_to_meta(file: UploadFile = File(...)):
+    WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+    WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+
+    url = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/media"
+
+    form_data = {
+        "messaging_product": "whatsapp",
+        "type": "image"
+    }
+
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}"
+    }
+
+    # Build multipart form
+    files = {
+        "file": (file.filename, await file.read(), file.content_type)
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, params=form_data, headers=headers, files=files)
+
+    if response.status_code != 200:
+        return {"error": response.text}
+
+    return {"media_id": response.json().get("id")}
