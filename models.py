@@ -102,3 +102,11 @@ class TemplateCreate(BaseModel):
     media_url: Optional[str] = None
     buttons_json: Optional[str] = None
     components: Optional[List[Dict[str, Any]]] = None
+
+class SendMessageRequest(BaseModel):
+    contactId: str
+    content: Optional[str] = None  # Only for type='text'
+    type: str = "text"             # "text" or "template"
+    templateName: Optional[str] = None
+    language: Optional[str] = "en_US"
+    components: Optional[List[Dict[str, Any]]] = None
