@@ -243,7 +243,7 @@ async def update_contact(id: str, updated: Contact, session: Session = Depends(g
         setattr(db_contact, key, value)
 
     db_contact.updatedAt = datetime.utcnow()
-    await session.add(db_contact)
+    session.add(db_contact)
     await session.commit()
     await session.refresh(db_contact)
     return db_contact
