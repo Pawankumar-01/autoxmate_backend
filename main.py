@@ -25,6 +25,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from dotenv import load_dotenv
+from utils.whatsapp import send_whatsapp_template
 
 
 load_dotenv()
@@ -308,7 +309,7 @@ async def get_messages(contact_id: str, session: AsyncSession = Depends(get_sess
     result = await session.execute(select(Message).where(Message.contactId == contact_id))
     return result.scalars().all()
 
-import httpx
+  # 👈 Import the helper
 
 @app.post("/messages/send", response_model=Message)
 async def send_message(data: SendMessageRequest, session: AsyncSession = Depends(get_session)):
@@ -316,80 +317,62 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
-    if data.type == "text":
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": contact.phone,
-            "type": "text",
-            "text": {"body": data.content}
+    # --- Step 1: Get template metadata from Meta ---
+    meta_url = f"https://graph.facebook.com/v19.0/{WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates"
+    params = {"name": data.templateName}
+
+    async with httpx.AsyncClient() as client:
+        meta_resp = await client.get(meta_url, headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, params=params)
+    if meta_resp.status_code != 200:
+        raise HTTPException(status_code=400, detail=f"Template fetch failed: {meta_resp.text}")
+    template = meta_resp.json().get("data", [{}])[0]
+
+    components = template.get("components", [])
+    lang = template.get("language", "en_US")  # ✅ dynamic language
+
+    # --- Step 2: Build components with substitution ---
+    filled_components = []
+    for comp in components:
+        ctype = comp["type"]
+
+        if ctype == "HEADER" and comp.get("format") == "IMAGE":
+            header_url = comp.get("example", {}).get("header_handle", [])[0]
+            filled_components.append({
+                "type": "header",
+                "parameters": [{
+                    "type": "image",
+                    "image": { "link": header_url }
+                }]
+            })
+
+        elif ctype == "BODY":
+            body_text = comp["text"]
+            variables = data.variables or {}
+            for k, v in variables.items():
+                body_text = body_text.replace(f"{{{{{k}}}}}", v)
+            filled_components.append({
+                "type": "body",
+                "parameters": [{"type": "text", "text": body_text}]
+            })
+
+        elif ctype == "FOOTER":
+            # No parameters needed for footer in API
+            pass
+
+        elif ctype == "BUTTONS":
+            filled_components.append(comp)  # Buttons don't use variables
+
+    # --- Step 3: Prepare payload and send ---
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": contact.phone,
+        "type": "template",
+        "template": {
+            "name": data.templateName,
+            "language": { "code": lang },
+            "components": filled_components
         }
-
-    elif data.type == "template":
-        if not data.templateName or not data.components:
-            raise HTTPException(status_code=400, detail="Missing template name or components")
-
-        formatted_components = []
-
-        for comp in data.components:
-            comp_type = comp.get("type")
-
-            if comp_type == "body":
-                formatted_components.append({
-                    "type": "body",
-                    "parameters": comp.get("parameters", [])
-                })
-
-            elif comp_type == "header":
-                    parameters = comp.get("parameters", [])
-                    if not parameters:
-                        raise HTTPException(status_code=400, detail="Header parameters missing")
-                
-                    first_param = parameters[0]
-                
-                    # Meta expects an image template, and you're passing an image
-                    if first_param.get("type") == "image":
-                        image_obj = first_param.get("image", {})
-                        image_link = image_obj.get("link")
-                        if not image_link:
-                            raise HTTPException(status_code=400, detail="Image link missing in header parameter")
-                
-                        formatted_components.append({
-                            "type": "header",
-                            "parameters": [{
-                                "type": "image",
-                                "image": {
-                                    "link": image_link
-                                }
-                            }]
-                        })
-                    else:
-                        raise HTTPException(status_code=400, detail="Header format mismatch: Expected image with valid link")
-
-
-            elif comp_type == "button":
-                formatted_components.append({
-                    "type": "button",
-                    "sub_type": comp.get("sub_type", "quick_reply"),
-                    "index": str(comp.get("index", "0")),
-                    "parameters": comp.get("parameters", [])
-                })
-
-            else:
-                raise HTTPException(status_code=400, detail=f"Unsupported component type: {comp_type}")
-
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": contact.phone,
-            "type": "template",
-            "template": {
-                "name": data.templateName,
-                "language": {"code": data.language or "en_US"},
-                "components": formatted_components
-            }
-        }
-
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported message type")
+    }
 
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -400,23 +383,18 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
         response = await client.post(WHATSAPP_API_URL, headers=headers, json=payload)
 
     if response.status_code != 200:
-        # Bubble up the real error to the client
-        detail = response.json()
         raise HTTPException(status_code=400, detail={
             "whatsapp_status": response.status_code,
-            "whatsapp_response": detail
+            "whatsapp_response": response.json()
         })
-    else:
-        print("Message sent successfully:", response.json())
-        status = MessageStatus.SENT
 
     message = Message(
         contactId=data.contactId,
         content=data.content or f"TEMPLATE: {data.templateName}",
         timestamp=datetime.utcnow(),
         direction="outbound",
-        status=status,
-        type=data.type,
+        status=MessageStatus.SENT,
+        type="template",
         templateName=data.templateName
     )
     session.add(message)
@@ -424,6 +402,7 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
     await session.refresh(message)
 
     return message
+
 
 
 
