@@ -650,8 +650,6 @@ async def run_campaign(data: dict = Body(...), session: AsyncSession = Depends(g
         raise HTTPException(status_code=400, detail="WhatsApp not configured")
 
     # Meta WhatsApp API details
-    WA_ID = config.phoneNumberId
-    TOKEN = config.token
     url_template = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/message_templates"
     url_send = f"https://graph.facebook.com/v19.0/{WHATSAPP_TOKEN}/messages"
 
