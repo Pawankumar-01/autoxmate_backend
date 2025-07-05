@@ -645,10 +645,6 @@ async def run_campaign(data: dict = Body(...), session: AsyncSession = Depends(g
     if not template_name or not contact_ids:
         raise HTTPException(status_code=400, detail="Missing templateName or contactIds")
 
-    config = await session.get(WhatsAppConfig, 1)
-    if not config or not config.isConfigured:
-        raise HTTPException(status_code=400, detail="WhatsApp not configured")
-
     # Meta WhatsApp API details
     url_template = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/message_templates"
     url_send = f"https://graph.facebook.com/v19.0/{WHATSAPP_TOKEN}/messages"
@@ -657,7 +653,7 @@ async def run_campaign(data: dict = Body(...), session: AsyncSession = Depends(g
         # Fetch template structure
         r = await client.get(
             url_template,
-            headers={"Authorization": f"Bearer {TOKEN}"},
+            headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
             params={"name": template_name, "language": lang}
         )
         if r.status_code != 200:
