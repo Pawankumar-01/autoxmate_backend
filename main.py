@@ -635,7 +635,7 @@ async def fetch_templates_from_meta(session: AsyncSession = Depends(get_session)
     return response.json()
 #--------------------------------------------------------------------------------------------
 
-@router.post("/campaigns/run")
+@app.post("/campaigns/run")
 async def run_campaign(data: dict = Body(...), session: AsyncSession = Depends(get_session)):
     contact_ids = data.get("contactIds", [])
     variables = data.get("variables", {})
