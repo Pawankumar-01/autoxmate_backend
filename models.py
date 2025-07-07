@@ -110,3 +110,14 @@ class SendMessageRequest(BaseModel):
     templateName: Optional[str] = None
     language: Optional[str] = "en_US"
     components: Optional[List[Dict[str, Any]]] = None
+
+
+class CampaignCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    template_id: str
+    template_name: str
+    components: List[Dict[str, Any]]
+    contact_ids: List[str]
+    scheduled_at: Optional[datetime] = None
+    created_by: str
