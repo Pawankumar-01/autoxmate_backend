@@ -647,7 +647,7 @@ async def run_campaign(data: dict = Body(...), session: AsyncSession = Depends(g
 
     # Meta WhatsApp API details
     url_template = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/message_templates"
-    url_send = f"https://graph.facebook.com/v19.0/{WHATSAPP_TOKEN}/messages"
+    url_send = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
 
     async with httpx.AsyncClient() as client:
         # Fetch template structure
@@ -744,7 +744,7 @@ async def run_campaign(data: dict = Body(...), session: AsyncSession = Depends(g
             try:
                 resp = await client.post(
                     url_send,
-                    headers={"Authorization": f"Bearer {TOKEN}"},
+                    headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
                     json=payload
                 )
                 status = MessageStatus.SENT if resp.status_code == 200 else MessageStatus.FAILED
