@@ -502,10 +502,16 @@ async def mark_conversation_as_read(contact_id: str, session: AsyncSession = Dep
 def get_campaigns():
     return campaigns_db
 
-@app.post("/campaigns/", response_model=Campaign)
-def create_campaign(campaign: Campaign):
-    campaigns_db.append(campaign)
-    return campaign
+@app.post("/campaigns/")
+def create_campaign(campaign: CampaignCreate):
+    new_campaign = {
+        "id": len(campaigns_db) + 1,
+        "name": campaign.name,
+        "contacts": campaign.contact_ids,
+        "message": f"TEMPLATE: {campaign.template_name}"
+    }
+    campaigns_db.append(new_campaign)
+    return new_campaign
 
 #--------------------------------Settings-------------------
 from models import WhatsAppConfig
