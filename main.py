@@ -13,8 +13,7 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlmodel import Session
 import csv
 from io import StringIO
-from models import Contact,Message
-from models import Contact,MessageRequest,Message,WhatsAppConfig,MessageStatus,Template,TemplateType,TemplateCreate,SendMessageRequest,CampaignCreate
+from models import Contact,MessageRequest,Message,WhatsAppConfig,MessageStatus,Template,TemplateType,TemplateCreate,SendMessageRequest,CampaignCreate,MessgageDirection
 from database import get_session, init_db
 from datetime import datetime
 import httpx
@@ -356,6 +355,7 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
     await session.refresh(message)
 
     return message
+
 
 
 
