@@ -26,6 +26,10 @@ class MessageStatus(str, Enum):
     PENDING = "pending"
     RECEIVED = "received"
 
+class SendMessageRequest(BaseModel):
+    contactId: str
+    content: str
+
 # ------------------- MODELS -------------------
 
 class Contact(SQLModel, table=True):
