@@ -317,60 +317,15 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
-    # --- Step 1: Get template metadata from Meta ---
-    meta_url = f"https://graph.facebook.com/v19.0/{WHATSAPP_BUSINESS_ACCOUNT_ID}/message_templates"
-    params = {"name": data.templateName}
+    if not data.content:
+        raise HTTPException(status_code=400, detail="Message content is required")
 
-    async with httpx.AsyncClient() as client:
-        meta_resp = await client.get(meta_url, headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, params=params)
-    if meta_resp.status_code != 200:
-        raise HTTPException(status_code=400, detail=f"Template fetch failed: {meta_resp.text}")
-    template = meta_resp.json().get("data", [{}])[0]
-
-    components = template.get("components", [])
-    lang = template.get("language", "en_US")  # ✅ dynamic language
-
-    # --- Step 2: Build components with substitution ---
-    filled_components = []
-    for comp in components:
-        ctype = comp["type"]
-
-        if ctype == "HEADER" and comp.get("format") == "IMAGE":
-            header_url = comp.get("example", {}).get("header_handle", [])[0]
-            filled_components.append({
-                "type": "header",
-                "parameters": [{
-                    "type": "image",
-                    "image": { "link": header_url }
-                }]
-            })
-
-        elif ctype == "BODY":
-            body_text = comp["text"]
-            variables = data.variables or {}
-            for k, v in variables.items():
-                body_text = body_text.replace(f"{{{{{k}}}}}", v)
-            filled_components.append({
-                "type": "body",
-                "parameters": [{"type": "text", "text": body_text}]
-            })
-
-        elif ctype == "FOOTER":
-            # No parameters needed for footer in API
-            pass
-
-        elif ctype == "BUTTONS":
-            filled_components.append(comp)  # Buttons don't use variables
-
-    # --- Step 3: Prepare payload and send ---
     payload = {
         "messaging_product": "whatsapp",
         "to": contact.phone,
-        "type": "template",
-        "template": {
-            "name": data.templateName,
-            "language": { "code": lang },
-            "components": filled_components
+        "type": "text",
+        "text": {
+            "body": data.content
         }
     }
 
@@ -383,25 +338,25 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
         response = await client.post(WHATSAPP_API_URL, headers=headers, json=payload)
 
     if response.status_code != 200:
-        raise HTTPException(status_code=400, detail={
+        raise HTTPException(status_code=500, detail={
             "whatsapp_status": response.status_code,
             "whatsapp_response": response.json()
         })
 
     message = Message(
         contactId=data.contactId,
-        content=data.content or f"TEMPLATE: {data.templateName}",
+        content=data.content,
         timestamp=datetime.utcnow(),
-        direction="outbound",
+        direction=MessageDirection.OUTBOUND,
         status=MessageStatus.SENT,
-        type="template",
-        templateName=data.templateName
+        type=MessageType.TEXT
     )
     session.add(message)
     await session.commit()
     await session.refresh(message)
 
     return message
+
 
 
 
