@@ -318,54 +318,60 @@ async def send_message(data: SendMessageRequest, session: AsyncSession = Depends
         if not contact:
             raise HTTPException(status_code=404, detail="Contact not found")
 
-        if not data.content:
-            raise HTTPException(status_code=400, detail="Message content is required")
-
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": contact.phone,
-            "type": "text",
-            "text": {
-                "body": data.content
-            }
-        }
-
         headers = {
             "Authorization": f"Bearer {WHATSAPP_TOKEN}",
             "Content-Type": "application/json"
         }
 
+        # Default payload
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": contact.phone,
+        }
+
+        if data.type == "text":
+            if not data.content:
+                raise HTTPException(status_code=400, detail="Text message content is required")
+            payload["type"] = "text"
+            payload["text"] = { "body": data.content }
+
+        elif data.type == "template":
+            if not data.templateName or not data.language or not data.components:
+                raise HTTPException(status_code=400, detail="Missing templateName, language or components")
+            payload["type"] = "template"
+            payload["template"] = {
+                "name": data.templateName,
+                "language": { "code": data.language },
+                "components": data.components
+            }
+
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported message type")
+
         async with httpx.AsyncClient() as client:
             response = await client.post(WHATSAPP_API_URL, headers=headers, json=payload)
 
         if response.status_code != 200:
-            try:
-                error_data = response.json()
-            except Exception:
-                error_data = {"raw": response.text}
+            raise HTTPException(status_code=500, detail=response.json())
 
-            raise HTTPException(status_code=500, detail={
-                "whatsapp_status": response.status_code,
-                "whatsapp_response": error_data
-            })
-
+        # Save to DB
         message = Message(
             contactId=data.contactId,
-            content=data.content,
+            content=data.content or data.templateName,
             timestamp=datetime.utcnow(),
             direction=MessageDirection.OUTBOUND,
             status=MessageStatus.SENT,
-            type=MessageType.TEXT
+            type=data.type
         )
         session.add(message)
         await session.commit()
         await session.refresh(message)
-
         return message
+
     except Exception as e:
         print("❌ Send Message Error:", str(e))
-        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
 
 
 
