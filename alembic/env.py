@@ -1,34 +1,58 @@
-from sqlmodel import SQLModel
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine  # Sync engine for Alembic
 import os
+from logging.config import fileConfig
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+from dotenv import dotenv_values
+import os
+from models import SQLModel
+from models import Contact,MessageRequest,Message,WhatsAppConfig,MessageStatus,Template,TemplateType,TemplateCreate,SendMessageRequest,CampaignCreate,MessageDirection
+target_metadata = SQLModel.metadata
 from dotenv import load_dotenv
-
-# Load environment variables
 load_dotenv()
+env = dotenv_values(".env")
+os.environ.update(env)
 
-# Get DB URL from environment
+# ---------------- CONFIG ------------------
+config = context.config
+fileConfig(config.config_file_name)
+
+# ✅ Use sync DB URL (not asyncpg, Alembic can’t use async engines)
 DATABASE_URL = os.getenv("DATABASE_URL")
-
 if not DATABASE_URL:
-    raise Exception("DATABASE_URL is not set in your .env file.")
+    raise Exception("DATABASE_URL is not set in .env")
 
-# ✅ Async Engine (for FastAPI runtime use)
-engine = create_async_engine(DATABASE_URL, echo=True)
-AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+sync_url = DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
+config.set_main_option("sqlalchemy.url", sync_url)
 
-# ✅ Sync Engine (for Alembic migrations)
-# Alembic does not work with async engine, so we need a sync one
-sync_engine = create_engine(DATABASE_URL.replace("postgresql+asyncpg", "postgresql"), echo=True)
+# ---------------- METADATA ------------------
 
+# ---------------- OFFLINE MODE ------------------
+def run_migrations_offline():
+    context.configure(
+        url=sync_url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
 
-# Dependency for FastAPI
-async def get_session() -> AsyncSession:
-    async with AsyncSessionLocal() as session:
-        yield session
+# ---------------- ONLINE MODE ------------------
+def run_migrations_online():
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
 
-# Async DB initializer (optional for runtime init, not used by Alembic)
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+
+# ---------------- ENTRYPOINT ------------------
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+
