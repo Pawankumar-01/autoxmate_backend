@@ -2,7 +2,7 @@ from enum import Enum
 from datetime import datetime
 from typing import Optional,List,Dict,Any
 from pydantic import BaseModel
-from sqlmodel import SQLModel, Field
+from sqlmodel import SQLModel, Field,Column,JSON
 import uuid
 
 def generate_uuid():
@@ -125,3 +125,21 @@ class CampaignCreate(BaseModel):
     contact_ids: List[str]
     scheduled_at: Optional[datetime] = None
     created_by: str
+
+class Campaign(SQLModel, table=True):
+    id: str = Field(default_factory=generate_uuid, primary_key=True)
+    name: str
+    description: Optional[str] = None
+    template_id: str
+    template_name: str
+    language: str = "en_US"
+    
+    # Store lists/dicts as JSON
+    components: List[Dict[str, Any]] = Field(sa_column=Column(JSON))
+    contact_ids: List[str] = Field(sa_column=Column(JSON))
+
+    scheduled_at: Optional[datetime] = None
+    created_by: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    run_payload: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    status: Optional[str] = Field(default="draft")

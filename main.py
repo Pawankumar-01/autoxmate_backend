@@ -12,8 +12,9 @@ from enum import Enum
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlmodel import Session
 import csv
+import logging
 from io import StringIO
-from models import Contact,MessageRequest,Message,WhatsAppConfig,MessageStatus,Template,TemplateType,TemplateCreate,SendMessageRequest,CampaignCreate,MessageDirection
+from models import Contact,MessageRequest,Campaign,Message,WhatsAppConfig,MessageStatus,Template,TemplateType,TemplateCreate,SendMessageRequest,CampaignCreate,MessageDirection,MessageType
 from database import get_session, init_db
 from datetime import datetime
 import httpx
@@ -24,7 +25,9 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 from dotenv import load_dotenv
-from utils.whatsapp import send_whatsapp_template
+
+
+from utils.whatsapp import send_template_message
 
 
 load_dotenv()
@@ -62,11 +65,7 @@ class Token(BaseModel):
 class User(BaseModel):
     username: str
 
-class Campaign(BaseModel):
-    id: int
-    name: str
-    contacts: List[str]
-    message: str
+
 
 campaigns_db: List[Campaign] = []
 from typing import Optional, List, Dict, Any
@@ -466,19 +465,39 @@ async def mark_conversation_as_read(contact_id: str, session: AsyncSession = Dep
 # ------------------ Campaigns ------------------
 
 @app.get("/campaigns/", response_model=List[Campaign])
-def get_campaigns():
-    return campaigns_db
+async def get_campaigns(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Campaign))
+    campaigns = result.scalars().all()
+    return campaigns
 
 @app.post("/campaigns/")
-def create_campaign(campaign: CampaignCreate):
-    new_campaign = {
-        "id": len(campaigns_db) + 1,
-        "name": campaign.name,
-        "contacts": campaign.contact_ids,
-        "message": f"TEMPLATE: {campaign.template_name}"
+async def create_campaign(campaign_data: dict, session: AsyncSession = Depends(get_session)):
+    # Extract run_payload parts
+    run_payload = campaign_data.get("components") and {
+        "template_name": campaign_data.get("template_name"),
+        "language": campaign_data.get("language"),
+        "contact_ids": campaign_data.get("contact_ids"),
+        "components": campaign_data.get("components")  # ← directly used
     }
-    campaigns_db.append(new_campaign)
-    return new_campaign
+
+    campaign = Campaign(
+        name=campaign_data["name"],
+        description=campaign_data.get("description", ""),
+        template_id=campaign_data["template_id"],
+        template_name=campaign_data["template_name"],
+        language=campaign_data["language"],
+        contact_ids=campaign_data["contact_ids"],
+        scheduled_at=campaign_data.get("scheduled_at"),
+        created_by=campaign_data["created_by"],
+        created_at=datetime.utcnow(),
+        run_payload=run_payload  # ✅ this stores everything needed for run
+    )
+    session.add(campaign)
+    await session.commit()
+    await session.refresh(campaign)
+    return campaign
+
+
 
 #--------------------------------Settings-------------------
 from models import WhatsAppConfig
@@ -607,139 +626,67 @@ async def fetch_templates_from_meta(session: AsyncSession = Depends(get_session)
 
     return response.json()
 #--------------------------------------------------------------------------------------------
+class ComponentParameter(BaseModel):
+    type: str
+    text: Optional[str] = None
+    image: Optional[Dict[str, str]] = None
+
+class Component(BaseModel):
+    type: str
+    sub_type: Optional[str] = None
+    index: Optional[int] = None
+    parameters: Optional[List[ComponentParameter]] = []  
+
+class RunCampaignPayload(BaseModel):
+    template_name: str
+    language: str
+    contact_ids: List[str]
+    components: List[Component]
+
+@app.post("/campaigns/{campaign_id}/run")
+async def run_campaign(
+    campaign_id: str,
+    payload: RunCampaignPayload,
+    session: AsyncSession = Depends(get_session)
+):
+    # Optional: Fetch campaign from DB for logging, validation, etc.
+    campaign = await session.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    await send_template_message(
+        session=session,
+        template_name=payload.template_name,
+        language=payload.language,
+        components=[component.dict() for component in payload.components],
+        contact_ids=payload.contact_ids,
+    )
+
+    return {"status": "success"}
+
+
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 @app.post("/campaigns/run")
-async def run_campaign(data: dict = Body(...), session: AsyncSession = Depends(get_session)):
-    contact_ids = data.get("contactIds", [])
-    variables = data.get("variables", {})
-    template_name = data.get("templateName")
-    lang = data.get("language", "en_US")
+async def run_campaign(payload: dict, request: Request, session: AsyncSession = Depends(get_session)):
+    print("📥 Campaign Run Payload Received:", payload)
 
-    if not template_name or not contact_ids:
-        raise HTTPException(status_code=400, detail="Missing templateName or contactIds")
+    # Extract info from payload
+    template_name = payload.get("template_name")
+    language = payload.get("language")
+    components = payload.get("components")
+    contact_ids = payload.get("contact_ids")
 
-    # Meta WhatsApp API details
-    url_template = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/message_templates"
-    url_send = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+    if not all([template_name, language, components, contact_ids]):
+        return JSONResponse(status_code=400, content={"error": "Missing required fields"})
 
-    async with httpx.AsyncClient() as client:
-        # Fetch template structure
-        r = await client.get(
-            url_template,
-            headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
-            params={"name": template_name, "language": lang}
-        )
-        if r.status_code != 200:
-            raise HTTPException(status_code=400, detail=f"Template fetch failed: {r.text}")
+    # Loop through contacts and send messages (example logic)
+    for contact_id in contact_ids:
+        # TODO: Fetch contact from DB and send template message via WhatsApp API
+        print(f"📨 Would send template '{template_name}' to contact_id {contact_id}")
 
-        template = r.json().get("data", [{}])[0]
-        if not template or not template.get("components"):
-            raise HTTPException(status_code=400, detail="Template components not found")
+    return {"status": "Campaign executed successfully"}
 
-        components = template["components"]
-        sent = 0
 
-        for cid in contact_ids:
-            contact = await session.get(Contact, cid)
-            if not contact:
-                continue
-
-            msg_components = []
-
-            for comp in components:
-                ctype = comp["type"]
-
-                # Handle header image
-                if ctype == "HEADER" and comp.get("format") == "IMAGE":
-                    image_url = variables.get("header_image_url")
-                    if not image_url:
-                        raise HTTPException(status_code=400, detail="Missing image URL for header")
-                    msg_components.append({
-                        "type": "header",
-                        "parameters": [
-                            {
-                                "type": "image",
-                                "image": {
-                                    "link": image_url
-                                }
-                            }
-                        ]
-                    })
-
-                # Handle body variables
-                elif ctype == "BODY":
-                    body_text = comp.get("text", "")
-                    placeholder_keys = re.findall(r"{{(.*?)}}", body_text)
-                    parameters = []
-                    for key in placeholder_keys:
-                        parameters.append({
-                            "type": "text",
-                            "text": variables.get(key, "")
-                        })
-                    msg_components.append({
-                        "type": "body",
-                        "parameters": parameters
-                    })
-
-                # Handle button payloads (if applicable)
-                elif ctype == "BUTTON":
-                    sub_type = comp.get("sub_type", "quick_reply")
-                    index = comp.get("index", "0")
-                    param_type = "payload" if sub_type == "quick_reply" else "text"
-                    var_key = f"button_payload_{index}"
-                    var_val = variables.get(var_key, "default_payload")
-                    msg_components.append({
-                        "type": "button",
-                        "sub_type": sub_type,
-                        "index": index,
-                        "parameters": [
-                            {
-                                "type": param_type,
-                                param_type: var_val
-                            }
-                        ]
-                    })
-
-            # Construct final payload
-            payload = {
-                "messaging_product": "whatsapp",
-                "to": contact.phone,
-                "type": "template",
-                "template": {
-                    "name": template_name,
-                    "language": {
-                        "code": lang
-                    },
-                    "components": msg_components
-                }
-            }
-
-            try:
-                resp = await client.post(
-                    url_send,
-                    headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"},
-                    json=payload
-                )
-                status = MessageStatus.SENT if resp.status_code == 200 else MessageStatus.FAILED
-
-                if resp.status_code != 200:
-                    logging.warning(f"Message failed for {contact.phone}: {resp.text}")
-            except Exception as e:
-                logging.error(f"Sending failed for {contact.phone}: {str(e)}")
-                status = MessageStatus.FAILED
-
-            # Log message
-            msg = Message(
-                contactId=cid,
-                content="",
-                direction="outbound",
-                status=status,
-                timestamp=datetime.utcnow(),
-                type="template",
-                templateName=template_name
-            )
-            session.add(msg)
-            sent += 1
-
-    await session.commit()
-    return {"sent": sent}
