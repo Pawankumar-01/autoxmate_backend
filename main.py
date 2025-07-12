@@ -672,27 +672,4 @@ async def run_campaign(
 
 
 
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
-@app.post("/campaigns/run")
-async def run_campaign(payload: dict, request: Request, session: AsyncSession = Depends(get_session)):
-    print("📥 Campaign Run Payload Received:", payload)
-
-    # Extract info from payload
-    template_name = payload.get("template_name")
-    language = payload.get("language")
-    components = payload.get("components")
-    contact_ids = payload.get("contact_ids")
-
-    if not all([template_name, language, components, contact_ids]):
-        return JSONResponse(status_code=400, content={"error": "Missing required fields"})
-
-    # Loop through contacts and send messages (example logic)
-    for contact_id in contact_ids:
-        # TODO: Fetch contact from DB and send template message via WhatsApp API
-        print(f"📨 Would send template '{template_name}' to contact_id {contact_id}")
-
-    return {"status": "Campaign executed successfully"}
-
 
