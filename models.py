@@ -1,5 +1,9 @@
 from enum import Enum
+<<<<<<< HEAD
 from datetime import datetime,timezone
+=======
+from datetime import datetime
+>>>>>>> 49910982bd3026b0204d439985cb8a193f8e604d
 from typing import Optional,List,Dict,Any
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field,Column,JSON
@@ -37,8 +41,13 @@ class Contact(SQLModel, table=True):
     name: str
     phone: str
     email: Optional[str] = None
+<<<<<<< HEAD
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+=======
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+>>>>>>> 49910982bd3026b0204d439985cb8a193f8e604d
     lastMessageAt: Optional[datetime] = None
 
 class Message(SQLModel, table=True):
@@ -48,7 +57,11 @@ class Message(SQLModel, table=True):
     type: MessageType = Field(default=MessageType.TEXT)
     direction: MessageDirection = Field(default=MessageDirection.OUTBOUND)
     status: MessageStatus = Field(default=MessageStatus.SENT)
+<<<<<<< HEAD
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))    
+=======
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+>>>>>>> 49910982bd3026b0204d439985cb8a193f8e604d
     templateName: Optional[str] = None
 
 class MessageRequest(BaseModel):
@@ -91,7 +104,11 @@ class Template(SQLModel, table=True):
     type: TemplateType = TemplateType.TEXT
     media_url: Optional[str] = None
     buttons_json: Optional[str] = None  # stored as JSON string
+<<<<<<< HEAD
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+=======
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+>>>>>>> 49910982bd3026b0204d439985cb8a193f8e604d
 
 
 
@@ -140,6 +157,10 @@ class Campaign(SQLModel, table=True):
 
     scheduled_at: Optional[datetime] = None
     created_by: str
+<<<<<<< HEAD
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+=======
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+>>>>>>> 49910982bd3026b0204d439985cb8a193f8e604d
     run_payload: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     status: Optional[str] = Field(default="draft")
