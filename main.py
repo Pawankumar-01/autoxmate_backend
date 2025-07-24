@@ -37,7 +37,7 @@ app = FastAPI()
 # CORS config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://saigangapanacea.in"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -455,18 +455,18 @@ async def get_conversation(contact_id: str, session: AsyncSession = Depends(get_
         "updatedAt": message.timestamp
     }
 
+
 @app.post("/conversations/{contact_id}/mark-read")
-async def mark_conversation_as_read(contact_id: str, session: AsyncSession = Depends(get_session)):
-    messages = await session.exec(
-        select(Message).where(Message.contactId == contact_id, Message.status != "read")
-    ).all()
+async def mark_conversation_as_read(conversation_id: int, session: AsyncSession = Depends(get_session)):
+    result = await session.exec(select(Message).where(Message.conversation_id == conversation_id))
+    messages = result.all()
 
     for message in messages:
-        message.status = "read"
-        await session.add(message)
-
+        message.is_read = True
     await session.commit()
-    return {"success": True}
+    return {"status": "success", "message": "Conversation marked as read"}
+
+    
 
 # ------------------ Campaigns ------------------
 
@@ -666,6 +666,7 @@ async def run_campaign(
     session: AsyncSession = Depends(get_session)
 ):
     # Optional: Fetch campaign from DB for logging, validation, etc.
+    print("🚀 run_campaign called for:", campaign_id)
     campaign = await session.get(Campaign, campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")

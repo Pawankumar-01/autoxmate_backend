@@ -23,6 +23,7 @@ async def send_template_message(
     contact_ids: list[str]
 ):
     # ✅ Check WhatsApp configuration
+    print("📨 Calling send_template_message")
     config = await session.get(WhatsAppConfig, 1)
     if not config or not config.isConfigured:
         raise HTTPException(status_code=400, detail="WhatsApp not configured")
