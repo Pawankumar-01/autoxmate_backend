@@ -1,5 +1,5 @@
 from enum import Enum
-from datetime import datetime
+from datetime import datetime,timezone
 from typing import Optional,List,Dict,Any
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field,Column,JSON
@@ -37,8 +37,8 @@ class Contact(SQLModel, table=True):
     name: str
     phone: str
     email: Optional[str] = None
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     lastMessageAt: Optional[datetime] = None
 
 class Message(SQLModel, table=True):
@@ -48,7 +48,7 @@ class Message(SQLModel, table=True):
     type: MessageType = Field(default=MessageType.TEXT)
     direction: MessageDirection = Field(default=MessageDirection.OUTBOUND)
     status: MessageStatus = Field(default=MessageStatus.SENT)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))    
     templateName: Optional[str] = None
 
 class MessageRequest(BaseModel):
@@ -91,7 +91,7 @@ class Template(SQLModel, table=True):
     type: TemplateType = TemplateType.TEXT
     media_url: Optional[str] = None
     buttons_json: Optional[str] = None  # stored as JSON string
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 
@@ -140,6 +140,6 @@ class Campaign(SQLModel, table=True):
 
     scheduled_at: Optional[datetime] = None
     created_by: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     run_payload: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     status: Optional[str] = Field(default="draft")
