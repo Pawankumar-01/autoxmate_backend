@@ -11,10 +11,6 @@ from collections import defaultdict
 from enum import Enum
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlmodel import Session
-<<<<<<< HEAD
-from sqlalchemy import delete
-=======
->>>>>>> 49910982bd3026b0204d439985cb8a193f8e604d
 import csv
 import logging
 from io import StringIO
@@ -41,11 +37,7 @@ app = FastAPI()
 # CORS config
 app.add_middleware(
     CORSMiddleware,
-<<<<<<< HEAD
-    allow_origins=["http://localhost:5173"],
-=======
     allow_origins=["https://saigangapanacea.in"],
->>>>>>> 49910982bd3026b0204d439985cb8a193f8e604d
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -511,7 +503,7 @@ async def create_campaign(campaign_data: dict, session: AsyncSession = Depends(g
     await session.refresh(campaign)
     return campaign
 
-<<<<<<< HEAD
+
 @app.delete("/campaigns/{campaign_id}")
 async def delete_campaign(campaign_id: str, session: AsyncSession = Depends(get_session)):
     campaign = await session.get(Campaign, campaign_id)
@@ -522,9 +514,6 @@ async def delete_campaign(campaign_id: str, session: AsyncSession = Depends(get_
     await session.commit()
 
     return {"detail": "Campaign deleted successfully"}
-=======
-
->>>>>>> 49910982bd3026b0204d439985cb8a193f8e604d
 
 #--------------------------------Settings-------------------
 from models import WhatsAppConfig
