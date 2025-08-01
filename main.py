@@ -210,10 +210,7 @@ def change_password(
     return {"detail": "Password updated successfully"}
 
 # ------------------ Contacts ------------------
-import uuid
 
-def generate_uuid():
-    return str(uuid.uuid4())
 class ContactBase(SQLModel):
     name: str
     phone: str
@@ -221,12 +218,6 @@ class ContactBase(SQLModel):
 
 class ContactCreate(ContactBase):
     pass
-
-class Contact(ContactBase, table=True):
-    id: str = Field(default_factory=generate_uuid, primary_key=True)
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    lastMessageAt: Optional[datetime] = None
 
 @app.get("/contacts/", response_model=List[Contact])
 async def get_contacts(session: AsyncSession = Depends(get_session)):
