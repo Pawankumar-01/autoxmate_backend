@@ -210,6 +210,10 @@ def change_password(
     return {"detail": "Password updated successfully"}
 
 # ------------------ Contacts ------------------
+import uuid
+
+def generate_uuid():
+    return str(uuid.uuid4())
 class ContactBase(SQLModel):
     name: str
     phone: str
