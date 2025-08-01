@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from sqlmodel import SQLModel, Session, select
+from sqlmodel import SQLModel, Session, select, Field
 from uuid import uuid4
 from collections import defaultdict
 from enum import Enum
