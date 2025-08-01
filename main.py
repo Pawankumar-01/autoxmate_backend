@@ -240,7 +240,7 @@ async def update_contact(id: str, updated: Contact, session: Session = Depends(g
     for key, value in updated.dict(exclude_unset=True).items():
         setattr(db_contact, key, value)
 
-    db_contact.updatedAt = datetime.utcnow()
+    db_contact.updated_at = datetime.now(timezone.utc)
     session.add(db_contact)
     await session.commit()
     await session.refresh(db_contact)
