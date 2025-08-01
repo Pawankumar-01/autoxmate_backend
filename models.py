@@ -38,8 +38,8 @@ class Contact(SQLModel, table=True):
     name: str
     phone: str
     email: Optional[str] = None
-    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    createdAt: datetime = Field(default_factory=lambda: datetime.utcnow()
+    updatedAt: datetime = Field(default_factory=lambda: datetime.utcnow()
     lastMessageAt: Optional[datetime] = None
 
 class Message(SQLModel, table=True):
