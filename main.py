@@ -210,6 +210,19 @@ def change_password(
     return {"detail": "Password updated successfully"}
 
 # ------------------ Contacts ------------------
+class ContactBase(SQLModel):
+    name: str
+    phone: str
+    email: Optional[str] = None
+
+class ContactCreate(ContactBase):
+    pass
+
+class Contact(ContactBase, table=True):
+    id: str = Field(default_factory=generate_uuid, primary_key=True)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    lastMessageAt: Optional[datetime] = None
 
 @app.get("/contacts/", response_model=List[Contact])
 async def get_contacts(session: AsyncSession = Depends(get_session)):
@@ -218,7 +231,8 @@ async def get_contacts(session: AsyncSession = Depends(get_session)):
 
 
 @app.post("/contacts/", response_model=Contact)
-async def add_contact(contact: Contact, session: AsyncSession = Depends(get_session)):
+async def add_contact(contact_data: ContactCreate, session: AsyncSession = Depends(get_session)):
+    contact = Contact(**contact_data.dict())
     session.add(contact)
     await session.commit()
     await session.refresh(contact)
